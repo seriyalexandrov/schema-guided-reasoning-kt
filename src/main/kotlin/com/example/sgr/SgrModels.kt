@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 
 data class NextStep(
+
     val currentState: String,
 
     @field:JsonPropertyDescription("Min 1 step and max 5 steps")
