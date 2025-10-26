@@ -30,8 +30,8 @@ data class Invoice(
     val email: String,
     val file: String,
     val skus: List<String>,
-    @field:JsonProperty("discount_amount") val discountAmount: Double,
-    @field:JsonProperty("discount_percent") val discountPercent: Int,
+    @field:JsonProperty val discountAmount: Double,
+    @field:JsonProperty val discountPercent: Int,
     val total: Double,
     var void: Boolean = false
 )
@@ -53,7 +53,7 @@ data class CustomerData(
     JsonSubTypes.Type(value = CreateRule::class, name = "remember"),
     JsonSubTypes.Type(value = ReportTaskCompletion::class, name = "report_completion")
 )
-sealed interface ToolCommand {
+sealed interface Function {
     val tool: String
 }
 
@@ -63,44 +63,48 @@ data class SendEmail(
     @field:JsonProperty(required = true) val message: String,
     @field:JsonProperty(required = true) val files: List<String>,
     @field:JsonProperty("recipient_email", required = true) val recipientEmail: String
-) : ToolCommand
+) : Function
 
 data class GetCustomerData(
     @field:JsonProperty(required = true) override val tool: String = "get_customer_data",
     @field:JsonProperty(required = true) val email: String
-) : ToolCommand
+) : Function
 
 data class IssueInvoice(
     @field:JsonProperty(required = true) override val tool: String = "issue_invoice",
     @param:JsonProperty(required = true) val email: String,
     @field:JsonProperty(required = true) val skus: List<String>,
-    @field:JsonProperty("discount_percent", required = true) val discountPercent: Int
-) : ToolCommand
+    @field:JsonProperty(required = true)
+    @field:JsonPropertyDescription("Between 0 and 50")
+    val discountPercent: Int
+) : Function
 
 data class VoidInvoice(
     @field:JsonProperty(required = true) override val tool: String = "void_invoice",
-    @field:JsonProperty("invoice_id", required = true) val invoiceId: String,
+    @field:JsonProperty(required = true) val invoiceId: String,
     @field:JsonProperty(required = true) val reason: String
-) : ToolCommand
+) : Function
 
 data class CreateRule(
     @field:JsonProperty(required = true) override val tool: String = "remember",
     @field:JsonProperty(required = true) val email: String,
     @field:JsonProperty(required = true) val rule: String
-) : ToolCommand
+) : Function
 
 data class ReportTaskCompletion(
     @field:JsonProperty(required = true) override val tool: String = "report_completion",
-    @field:JsonProperty("completed_steps_laconic", required = true) val completedStepsLaconic: List<String>,
+    @field:JsonProperty(required = true) val completedStepsLaconic: List<String>,
     @field:JsonProperty(required = true) val code: String
-) : ToolCommand
+) : Function
 
 // NextStep schema for reasoning
 data class NextStep(
     @field:JsonProperty(required = true) val currentState: String,
-    @field:JsonProperty(required = true) val planRemainingStepsBrief: List<String>,
     @field:JsonProperty(required = true)
-    @field:JsonPropertyDescription("Set true if the task has been completed, false otherwise")
-    val taskCompleted: Boolean,
-    @field:JsonProperty(required = true) val function: ToolCommand
+    @field:JsonPropertyDescription("Min 1 step and max 5 steps")
+    val planRemainingStepsBrief: List<String>,
+    @field:JsonProperty(required = true) val taskCompleted: Boolean,
+    @field:JsonProperty(required = true)
+    @field:JsonPropertyDescription("Execute first remaining step")
+    val function: Function
 )

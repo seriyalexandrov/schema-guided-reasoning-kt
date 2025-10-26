@@ -9,7 +9,7 @@ class ToolDispatcherStub(
     private val db: DatabaseStub,
     private val objectMapper: ObjectMapper
 ) {
-    fun dispatch(cmd: ToolCommand): String {
+    fun dispatch(cmd: Function): String {
         return when (cmd) {
             is SendEmail -> {
                 val email = Email(

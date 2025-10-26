@@ -1,3 +1,7 @@
+logging:
+  pattern:
+    console: "%level %msg%n"
+
 spring:
   ai:
     openai:

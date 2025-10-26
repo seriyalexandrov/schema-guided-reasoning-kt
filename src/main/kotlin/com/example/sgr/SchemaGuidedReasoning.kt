@@ -1,9 +1,11 @@
 package com.example.sgr
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import org.slf4j.LoggerFactory
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
+import org.springframework.ai.chat.messages.ToolResponseMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.openai.OpenAiChatModel
@@ -17,6 +19,9 @@ class SchemaGuidedReasoning(
     private val objectMapper: ObjectMapper,
     private val chatModel: OpenAiChatModel,
 ) {
+    private val logger = LoggerFactory.getLogger(SchemaGuidedReasoning::class.java)
+    private val promptResponseSchema = schemaBuilder.generateSchema(NextStep::class.java)
+
     private val systemPrompt = """
         You are a business assistant helping Sergei with customer interactions.
 
@@ -25,76 +30,78 @@ class SchemaGuidedReasoning(
         - Be concise. Especially in emails
         - No need to wait for payment confirmation before proceeding.
         - Always check customer data before issuing invoices or making changes.
-
-        Products: ${dbStub.products}
+        - List of available products: ${dbStub.products}
+        - Respond with ONLY valid JSON, no additional text.
+        - Your response must be a JSON object following this schema:
+         $promptResponseSchema        
     """.trimIndent()
 
-    private val promptResponseSchema = schemaBuilder.generateSchema(NextStep::class.java)
 
-    fun executeTask(task: String): List<String> {
-        println("\n=== Task: $task ===\n")
+    fun executeTask(task: String) {
+        logger.info("Launch agent with task: $task")
 
-        val log = mutableListOf<Message>(
+        val agentConversationLog = mutableListOf<Message>(
             SystemMessage(systemPrompt),
             UserMessage(task)
         )
 
-        val completedSteps = mutableListOf<String>()
-
         for (i in 1..20) {
-            print("Planning step_$i... ")
-
-            val promptWithFormat = """
-                ${log.last().text}
-
-                Your response must be a JSON object following this schema:
-                $promptResponseSchema
-
-                Respond with ONLY valid JSON, no additional text.
-            """.trimIndent()
-
-            val currentLog = log.dropLast(1) + UserMessage(promptWithFormat)
-            val prompt = Prompt(currentLog)
-
-            val content = chatModel.call(prompt).result.output.text
+            val step = "step_$i"
+            logger.info("Planning $step... ")
+            val llmResponse = chatModel.call(Prompt(agentConversationLog)).result.output.text
 
             val nextStep = try {
-                objectMapper.readValue(content, NextStep::class.java)
+                objectMapper.readValue(llmResponse, NextStep::class.java)
             } catch (e: Exception) {
-                println("Failed to parse response: $content")
+                logger.error("Failed to parse response: $llmResponse")
                 throw e
             }
 
             // Check if a task is completed
             if (nextStep.function is ReportTaskCompletion) {
-                println("agent ${nextStep.function.code}.")
-                println("\n=== Summary ===")
+                logger.info("Task completed. Summary:")
                 nextStep.function.completedStepsLaconic.forEach { step ->
-                    println("- $step")
+                    logger.info("- $step")
                 }
-                println("===============\n")
-                return nextStep.function.completedStepsLaconic
+                return
             }
 
             // Print the next step
             val nextStepPlan = nextStep.planRemainingStepsBrief.firstOrNull() ?: "No plan"
-            println(nextStepPlan)
-            println("  ${nextStep.function}")
+            logger.info("Next step: $nextStepPlan. Next tool call: ${nextStep.function.tool}")
+
+            // Add to a conversation log - include the full JSON response and tool result
+            agentConversationLog.add(
+                AssistantMessage(
+                    nextStepPlan,
+                    emptyMap(),
+                    listOf(
+                        AssistantMessage.ToolCall(
+                            step,
+                            "function",
+                            nextStep.function.tool,
+                            objectMapper.writeValueAsString(nextStep.function)
+                        )
+                    )
+                )
+            )
 
             // Execute the tool
             val result = toolsDispatcherStub.dispatch(nextStep.function)
-
-            println("  Result: $result")
-
-            // Add to a conversation log - include the full JSON response and tool result
-            log.add(AssistantMessage(content ?: ""))
-            log.add(UserMessage("Tool execution result: $result\n\nWhat's next?"))
-
-            completedSteps.add(nextStepPlan)
+            agentConversationLog.add(
+                ToolResponseMessage(
+                    listOf(
+                        ToolResponseMessage.ToolResponse(
+                            step,
+                            nextStep.function.tool,
+                            objectMapper.writeValueAsString(result)
+                        )
+                    )
+                )
+            )
         }
 
-        println("\n!!! Max iterations reached !!!\n")
-        return completedSteps
+        logger.error("Max iterations reached. Aborting execution.")
     }
 
     fun executeTasks(tasks: List<String>) {

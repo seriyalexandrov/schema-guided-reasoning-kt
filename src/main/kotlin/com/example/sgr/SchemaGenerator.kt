@@ -6,10 +6,12 @@ import com.github.victools.jsonschema.generator.SchemaGeneratorConfigBuilder
 import com.github.victools.jsonschema.generator.SchemaVersion.DRAFT_2020_12
 import com.github.victools.jsonschema.module.jackson.JacksonModule
 import com.github.victools.jsonschema.module.jackson.JacksonOption.RESPECT_JSONPROPERTY_REQUIRED
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
 @Component
 class SchemaBuilder() {
+    private val logger = LoggerFactory.getLogger(SchemaBuilder::class.java)
 
     fun generateSchema(modelClass: Class<NextStep>): String =
         SchemaGeneratorConfigBuilder(DRAFT_2020_12, PLAIN_JSON)
@@ -18,5 +20,5 @@ class SchemaBuilder() {
             .let { SchemaGenerator(it) }
             .generateSchema(modelClass)
             .toPrettyString()
-            .also { println("Generated JSON Schema: \n$it") }
+            .also { logger.info("Generated JSON Schema: \n$it") }
 }
