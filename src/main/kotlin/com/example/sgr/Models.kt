@@ -1,6 +1,7 @@
 package com.example.sgr
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.annotation.JsonPropertyDescription
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 
@@ -29,8 +30,8 @@ data class Invoice(
     val email: String,
     val file: String,
     val skus: List<String>,
-    @JsonProperty("discount_amount") val discountAmount: Double,
-    @JsonProperty("discount_percent") val discountPercent: Int,
+    @field:JsonProperty("discount_amount") val discountAmount: Double,
+    @field:JsonProperty("discount_percent") val discountPercent: Int,
     val total: Double,
     var void: Boolean = false
 )
@@ -57,47 +58,49 @@ sealed interface ToolCommand {
 }
 
 data class SendEmail(
-    override val tool: String = "send_email",
-    val subject: String,
-    val message: String,
-    val files: List<String>,
-    @JsonProperty("recipient_email") val recipientEmail: String
+    @field:JsonProperty(required = true) override val tool: String = "send_email",
+    @field:JsonProperty(required = true) val subject: String,
+    @field:JsonProperty(required = true) val message: String,
+    @field:JsonProperty(required = true) val files: List<String>,
+    @field:JsonProperty("recipient_email", required = true) val recipientEmail: String
 ) : ToolCommand
 
 data class GetCustomerData(
-    override val tool: String = "get_customer_data",
-    val email: String
+    @field:JsonProperty(required = true) override val tool: String = "get_customer_data",
+    @field:JsonProperty(required = true) val email: String
 ) : ToolCommand
 
 data class IssueInvoice(
-    override val tool: String = "issue_invoice",
-    val email: String,
-    val skus: List<String>,
-    @JsonProperty("discount_percent") val discountPercent: Int
+    @field:JsonProperty(required = true) override val tool: String = "issue_invoice",
+    @param:JsonProperty(required = true) val email: String,
+    @field:JsonProperty(required = true) val skus: List<String>,
+    @field:JsonProperty("discount_percent", required = true) val discountPercent: Int
 ) : ToolCommand
 
 data class VoidInvoice(
-    override val tool: String = "void_invoice",
-    @JsonProperty("invoice_id") val invoiceId: String,
-    val reason: String
+    @field:JsonProperty(required = true) override val tool: String = "void_invoice",
+    @field:JsonProperty("invoice_id", required = true) val invoiceId: String,
+    @field:JsonProperty(required = true) val reason: String
 ) : ToolCommand
 
 data class CreateRule(
-    override val tool: String = "remember",
-    val email: String,
-    val rule: String
+    @field:JsonProperty(required = true) override val tool: String = "remember",
+    @field:JsonProperty(required = true) val email: String,
+    @field:JsonProperty(required = true) val rule: String
 ) : ToolCommand
 
 data class ReportTaskCompletion(
-    override val tool: String = "report_completion",
-    @JsonProperty("completed_steps_laconic") val completedStepsLaconic: List<String>,
-    val code: String
+    @field:JsonProperty(required = true) override val tool: String = "report_completion",
+    @field:JsonProperty("completed_steps_laconic", required = true) val completedStepsLaconic: List<String>,
+    @field:JsonProperty(required = true) val code: String
 ) : ToolCommand
 
 // NextStep schema for reasoning
 data class NextStep(
-    @JsonProperty("current_state") val currentState: String = "",
-    @JsonProperty("plan_remaining_steps_brief") val planRemainingStepsBrief: List<String> = emptyList(),
-    @JsonProperty("task_completed") val taskCompleted: Boolean = false,
-    val function: ToolCommand
+    @field:JsonProperty(required = true) val currentState: String,
+    @field:JsonProperty(required = true) val planRemainingStepsBrief: List<String>,
+    @field:JsonProperty(required = true)
+    @field:JsonPropertyDescription("Set true if the task has been completed, false otherwise")
+    val taskCompleted: Boolean,
+    @field:JsonProperty(required = true) val function: ToolCommand
 )

@@ -3,7 +3,7 @@ package com.example.sgr
 import org.springframework.stereotype.Component
 
 @Component
-class Database {
+class DatabaseStub {
     val rules = mutableListOf<Rule>()
     val invoices = mutableMapOf<String, Invoice>()
     val emails = mutableListOf<Email>()

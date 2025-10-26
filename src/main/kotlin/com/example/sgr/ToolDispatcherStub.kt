@@ -5,8 +5,8 @@ import org.springframework.stereotype.Component
 import kotlin.math.roundToInt
 
 @Component
-class ToolDispatcher(
-    private val db: Database,
+class ToolDispatcherStub(
+    private val db: DatabaseStub,
     private val objectMapper: ObjectMapper
 ) {
     fun dispatch(cmd: ToolCommand): String {

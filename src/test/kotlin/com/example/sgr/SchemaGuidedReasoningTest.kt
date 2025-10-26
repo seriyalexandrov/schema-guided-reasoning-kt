@@ -35,7 +35,6 @@ class SchemaGuidedReasoningTest {
 
     @Test
     fun `test schema guided reasoning with simple task`() {
-        // Test with just the first task to ensure basic functionality works
         sgr.executeTask(tasks[0])
     }
 
