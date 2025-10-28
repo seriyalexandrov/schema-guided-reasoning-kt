@@ -1,5 +1,6 @@
 package com.example.sgr
 
+import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonPropertyDescription
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
@@ -15,7 +16,10 @@ data class NextStep(
 
     @field:JsonPropertyDescription("Execute first remaining step")
     val function: Function
-)
+) {
+    @JsonIgnore
+    fun isTaskCompleted(): Boolean = this.function is ReportTaskCompletion
+}
 
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "tool")
 @JsonSubTypes(

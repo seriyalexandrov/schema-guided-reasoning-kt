@@ -36,11 +36,16 @@ class SchemaGuidedReasoning(
          $promptResponseSchema        
     """.trimIndent()
 
+    fun executeTasks(tasks: List<String>) {
+        tasks.forEach { task ->
+            executeTask(task)
+        }
+    }
 
-    fun executeTask(task: String) {
+    private fun executeTask(task: String) {
         logger.info("Launch agent with task: $task")
 
-        val agentConversationLog = mutableListOf<Message>(
+        val agentDialog = mutableListOf<Message>(
             SystemMessage(systemPrompt),
             UserMessage(task)
         )
@@ -48,65 +53,62 @@ class SchemaGuidedReasoning(
         for (i in 1..20) {
             val step = "step_$i"
             logger.info("Planning $step... ")
-            val llmResponse = chatModel.call(Prompt(agentConversationLog)).result.output.text
 
-            val nextStep = try {
-                objectMapper.readValue(llmResponse, NextStep::class.java)
-            } catch (e: Exception) {
-                logger.error("Failed to parse response: $llmResponse")
-                throw e
-            }
+            val nextStep = chatModel.call(Prompt(agentDialog))
+                .result.output.text
+                .let { objectMapper.readValue(it, NextStep::class.java) }
 
-            // Check if a task is completed
-            if (nextStep.function is ReportTaskCompletion) {
-                logger.info("Task completed. Summary:")
-                nextStep.function.completedStepsLaconic.forEach { step ->
-                    logger.info("- $step")
-                }
+            if (nextStep.isTaskCompleted()) {
+                logCompletion(nextStep)
                 return
             }
 
-            // Print the next step
             val nextStepPlan = nextStep.planRemainingStepsBrief.firstOrNull() ?: "No plan"
+            agentDialog.add(buildToolCallMessage(nextStepPlan, step, nextStep))
             logger.info("Next step: $nextStepPlan. Next tool call: ${nextStep.function.tool}")
 
-            // Add to a conversation log - include the full JSON response and tool result
-            agentConversationLog.add(
-                AssistantMessage(
-                    nextStepPlan,
-                    emptyMap(),
-                    listOf(
-                        AssistantMessage.ToolCall(
-                            step,
-                            "function",
-                            nextStep.function.tool,
-                            objectMapper.writeValueAsString(nextStep.function)
-                        )
-                    )
-                )
-            )
-
-            // Execute the tool
-            val result = toolsDispatcherStub.dispatch(nextStep.function)
-            agentConversationLog.add(
-                ToolResponseMessage(
-                    listOf(
-                        ToolResponseMessage.ToolResponse(
-                            step,
-                            nextStep.function.tool,
-                            objectMapper.writeValueAsString(result)
-                        )
-                    )
-                )
-            )
+            val toolResponse = toolsDispatcherStub.dispatch(nextStep.function)
+            agentDialog.add(buildToolResponseMessage(step, nextStep, toolResponse))
         }
 
         logger.error("Max iterations reached. Aborting execution.")
     }
 
-    fun executeTasks(tasks: List<String>) {
-        tasks.forEach { task ->
-            executeTask(task)
+    private fun logCompletion(nextStep: NextStep) {
+        logger.info("Task completed. Summary:")
+        (nextStep.function as ReportTaskCompletion).completedStepsLaconic.forEach { step ->
+            logger.info("- $step")
         }
     }
+
+    private fun buildToolCallMessage(
+        nextStepPlan: String,
+        step: String,
+        nextStep: NextStep,
+    ): AssistantMessage = AssistantMessage(
+        nextStepPlan,
+        emptyMap(),
+        listOf(
+            AssistantMessage.ToolCall(
+                step,
+                "function",
+                nextStep.function.tool,
+                objectMapper.writeValueAsString(nextStep.function)
+            )
+        )
+    )
+
+    private fun buildToolResponseMessage(
+        step: String,
+        nextStep: NextStep,
+        result: String
+    ): ToolResponseMessage = ToolResponseMessage(
+        listOf(
+            ToolResponseMessage.ToolResponse(
+                step,
+                nextStep.function.tool,
+                objectMapper.writeValueAsString(result)
+            )
+        )
+    )
 }
