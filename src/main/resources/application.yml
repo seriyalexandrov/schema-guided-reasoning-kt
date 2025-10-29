@@ -1,6 +1,6 @@
 logging:
   pattern:
-    console: "%level %msg%n"
+    console: "%msg%n"
 
 spring:
   ai:

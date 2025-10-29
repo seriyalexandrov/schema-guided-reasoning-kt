@@ -65,7 +65,6 @@ class SchemaGuidedReasoning(
 
             val nextStepPlan = nextStep.planRemainingStepsBrief.firstOrNull() ?: "No plan"
             agentDialog.add(buildToolCallMessage(nextStepPlan, step, nextStep))
-            logger.info("Next step: $nextStepPlan. Next tool call: ${nextStep.function.tool}")
 
             val toolResponse = toolsDispatcherStub.dispatch(nextStep.function)
             agentDialog.add(buildToolResponseMessage(step, nextStep, toolResponse))
@@ -85,30 +84,43 @@ class SchemaGuidedReasoning(
         nextStepPlan: String,
         step: String,
         nextStep: NextStep,
-    ): AssistantMessage = AssistantMessage(
-        nextStepPlan,
-        emptyMap(),
-        listOf(
-            AssistantMessage.ToolCall(
-                step,
-                "function",
-                nextStep.function.tool,
-                objectMapper.writeValueAsString(nextStep.function)
-            )
-        )
-    )
+    ): AssistantMessage =
+        objectMapper.writeValueAsString(nextStep.function)
+            .also { logger.info("Next step: $nextStepPlan") }
+            .also { logger.info("Next tool call: \n$it") }
+            .let {
+                AssistantMessage(
+                    nextStepPlan,
+                    emptyMap(),
+                    listOf(
+                        AssistantMessage.ToolCall(
+                            step,
+                            "function",
+                            nextStep.function.tool,
+                            it
+                        )
+                    )
+                )
+            }
 
     private fun buildToolResponseMessage(
         step: String,
         nextStep: NextStep,
         result: String
-    ): ToolResponseMessage = ToolResponseMessage(
-        listOf(
-            ToolResponseMessage.ToolResponse(
-                step,
-                nextStep.function.tool,
-                objectMapper.writeValueAsString(result)
-            )
-        )
-    )
+    ): ToolResponseMessage =
+        objectMapper.readValue(result, Any::class.java)
+            .let { objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(it)}
+            .also { logger.info("Tool response: \n$it") }
+            .let {
+                ToolResponseMessage(
+                    listOf(
+                        ToolResponseMessage.ToolResponse(
+                            step,
+                            nextStep.function.tool,
+                            objectMapper.writeValueAsString(result)
+                        )
+                    )
+                )
+            }
+
 }

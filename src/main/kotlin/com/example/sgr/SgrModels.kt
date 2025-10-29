@@ -31,6 +31,7 @@ data class NextStep(
     JsonSubTypes.Type(value = ReportTaskCompletion::class, name = "report_completion")
 )
 sealed interface Function {
+    @get:JsonIgnore
     val tool: String
 }
 
