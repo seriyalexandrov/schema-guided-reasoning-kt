@@ -2,14 +2,11 @@ package com.example.sgr
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
-import org.springframework.ai.chat.messages.AssistantMessage
-import org.springframework.ai.chat.messages.Message
-import org.springframework.ai.chat.messages.SystemMessage
-import org.springframework.ai.chat.messages.ToolResponseMessage
-import org.springframework.ai.chat.messages.UserMessage
-import org.springframework.ai.chat.prompt.Prompt
-import org.springframework.ai.openai.OpenAiChatModel
+import com.openai.client.OpenAI
+import com.openai.models.ChatCompletionCreateParams
+import com.openai.models.ChatCompletionMessageParam
 import org.springframework.stereotype.Service
+import org.springframework.beans.factory.annotation.Value
 
 @Service
 class SchemaGuidedReasoning(
@@ -17,7 +14,9 @@ class SchemaGuidedReasoning(
     schemaBuilder: SchemaBuilder,
     private val toolsDispatcherStub: ToolDispatcherStub,
     private val objectMapper: ObjectMapper,
-    private val chatModel: OpenAiChatModel,
+    private val openAi: OpenAI,
+    @Value("\${openai.model}") private val model: String,
+    @Value("\${openai.temperature:1.0}") private val temperature: Double
 ) {
     private val logger = LoggerFactory.getLogger(SchemaGuidedReasoning::class.java)
     private val promptResponseSchema = schemaBuilder.generateSchema(NextStep::class.java)
@@ -45,18 +44,16 @@ class SchemaGuidedReasoning(
     private fun executeTask(task: String) {
         logger.info("Launch agent with task: $task")
 
-        val agentDialog = mutableListOf<Message>(
-            SystemMessage(systemPrompt),
-            UserMessage(task)
+        val agentDialog = mutableListOf<ChatEntry>(
+            ChatEntry.System(systemPrompt),
+            ChatEntry.User(task)
         )
 
         for (i in 1..20) {
             val step = "step_$i"
             logger.info("Planning $step... ")
 
-            val nextStep = chatModel.call(Prompt(agentDialog))
-                .result.output.text
-                .let { objectMapper.readValue(it, NextStep::class.java) }
+            val nextStep = requestNextStep(agentDialog)
 
             if (nextStep.isTaskCompleted()) {
                 logCompletion(nextStep)
@@ -64,13 +61,37 @@ class SchemaGuidedReasoning(
             }
 
             val nextStepPlan = nextStep.planRemainingStepsBrief.firstOrNull() ?: "No plan"
-            agentDialog.add(buildToolCallMessage(nextStepPlan, step, nextStep))
+            agentDialog.add(buildToolCallEntry(nextStepPlan, step, nextStep))
 
             val toolResponse = toolsDispatcherStub.dispatch(nextStep.function)
-            agentDialog.add(buildToolResponseMessage(step, nextStep, toolResponse))
+            agentDialog.add(buildToolResponseEntry(step, nextStep, toolResponse))
         }
 
         logger.error("Max iterations reached. Aborting execution.")
+    }
+
+    private fun requestNextStep(agentDialog: List<ChatEntry>): NextStep {
+        val completion = openAi.chat().completions().create(
+            ChatCompletionCreateParams.builder()
+                .model(model)
+                .messages(toChatMessages(agentDialog))
+                .temperature(temperature)
+                .build()
+        )
+
+        val assistantReply = completion.choices()
+            .firstOrNull()
+            ?.message()
+            ?.content()
+            ?.joinToString(separator = "") { content ->
+                content.text()
+                    .map { it.value() }
+                    .orElse("")
+            }
+            ?.takeIf { it.isNotBlank() }
+            ?: error("No content returned from OpenAI")
+
+        return objectMapper.readValue(assistantReply, NextStep::class.java)
     }
 
     private fun logCompletion(nextStep: NextStep) {
@@ -80,47 +101,47 @@ class SchemaGuidedReasoning(
         }
     }
 
-    private fun buildToolCallMessage(
+    private fun buildToolCallEntry(
         nextStepPlan: String,
         step: String,
         nextStep: NextStep,
-    ): AssistantMessage =
+    ): ChatEntry.Assistant =
         objectMapper.writeValueAsString(nextStep.function)
             .also { logger.info("Next step: $nextStepPlan") }
             .also { logger.info("Next tool call: \n$it") }
-            .let {
-                AssistantMessage(
-                    nextStepPlan,
-                    emptyMap(),
-                    listOf(
-                        AssistantMessage.ToolCall(
-                            step,
-                            "function",
-                            nextStep.function.tool,
-                            it
-                        )
-                    )
+            .let { payload ->
+                ChatEntry.Assistant(
+                    "TOOL_CALL [$step] ${nextStep.function.tool}: $payload"
                 )
             }
 
-    private fun buildToolResponseMessage(
+    private fun buildToolResponseEntry(
         step: String,
         nextStep: NextStep,
         result: String
-    ): ToolResponseMessage =
+    ): ChatEntry.User =
         objectMapper.readValue(result, Any::class.java)
             .let { objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(it)}
             .also { logger.info("Tool response: \n$it") }
-            .let {
-                ToolResponseMessage(
-                    listOf(
-                        ToolResponseMessage.ToolResponse(
-                            step,
-                            nextStep.function.tool,
-                            objectMapper.writeValueAsString(result)
-                        )
-                    )
-                )
+            .let { formatted ->
+                ChatEntry.User("TOOL_RESPONSE [$step] ${nextStep.function.tool}: $formatted")
             }
+
+    private fun toChatMessages(agentDialog: List<ChatEntry>): List<ChatCompletionMessageParam> =
+        agentDialog.map {
+            when (it) {
+                is ChatEntry.System -> ChatCompletionMessageParam.ofSystem(it.content)
+                is ChatEntry.User -> ChatCompletionMessageParam.ofUser(it.content)
+                is ChatEntry.Assistant -> ChatCompletionMessageParam.ofAssistant(it.content)
+            }
+        }
+
+    private sealed interface ChatEntry {
+        val content: String
+
+        data class System(override val content: String) : ChatEntry
+        data class User(override val content: String) : ChatEntry
+        data class Assistant(override val content: String) : ChatEntry
+    }
 
 }
