@@ -4,12 +4,11 @@ import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.openai.client.OpenAI
+import okhttp3.OkHttpClient
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.http.client.BufferingClientHttpRequestFactory
-import org.springframework.http.client.SimpleClientHttpRequestFactory
-import org.springframework.web.client.RestClient
 import java.time.Duration
 
 @Configuration
@@ -24,11 +23,19 @@ class AppConfiguration {
     }
 
     @Bean
-    fun restClientBuilder(
-        @Value("\${spring.ai.openai.timeout}") timeout: Long
-    ): RestClient.Builder =
-        SimpleClientHttpRequestFactory()
-            .apply { setReadTimeout(Duration.ofSeconds(timeout)) }
-            .let { BufferingClientHttpRequestFactory(it) }
-            .let { RestClient.builder().requestFactory(it) }
+    fun openAiClient(
+        @Value("\${openai.api-key}") apiKey: String,
+        @Value("\${openai.base-url:https://api.openai.com/v1}") baseUrl: String,
+        @Value("\${openai.timeout-seconds:30}") timeoutSeconds: Long
+    ): OpenAI {
+        val httpClient = OkHttpClient.Builder()
+            .callTimeout(Duration.ofSeconds(timeoutSeconds))
+            .build()
+
+        return OpenAI.builder()
+            .apiKey(apiKey)
+            .baseUrl(baseUrl)
+            .httpClient(httpClient)
+            .build()
+    }
 }

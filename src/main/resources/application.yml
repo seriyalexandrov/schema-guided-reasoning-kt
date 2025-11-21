@@ -2,12 +2,9 @@ logging:
   pattern:
     console: "%msg%n"
 
-spring:
-  ai:
-    openai:
-      api-key: ${OPENAI_API_KEY}
-      timeout: 30_000
-      chat:
-        options:
-          model: gpt-5-mini
-          temperature: 1
+openai:
+  api-key: ${OPENAI_API_KEY}
+  base-url: https://api.openai.com/v1
+  model: gpt-5-mini
+  temperature: 1
+  timeout-seconds: 30
