@@ -9,18 +9,24 @@ import org.springframework.ai.chat.messages.ToolResponseMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.openai.OpenAiChatModel
+import org.springframework.ai.openai.OpenAiChatOptions
+import org.springframework.ai.openai.api.ResponseFormat
+import org.springframework.ai.openai.api.ResponseFormat.Type.JSON_SCHEMA
 import org.springframework.stereotype.Service
 
 @Service
 class SchemaGuidedReasoning(
     dbStub: DatabaseStub,
-    schemaBuilder: SchemaBuilder,
     private val toolsDispatcherStub: ToolDispatcherStub,
     private val objectMapper: ObjectMapper,
     private val chatModel: OpenAiChatModel,
 ) {
     private val logger = LoggerFactory.getLogger(SchemaGuidedReasoning::class.java)
-    private val promptResponseSchema = schemaBuilder.generateSchema(NextStep::class.java)
+    private val outputConverter = CustomSchemaGenerator(NextStep::class.java)
+    private val openAiChatOptions = OpenAiChatOptions
+        .builder()
+        .responseFormat(ResponseFormat(JSON_SCHEMA, outputConverter.jsonSchema))
+        .build()
 
     private val systemPrompt = """
         You are a business assistant helping Sergei with customer interactions.
@@ -31,9 +37,6 @@ class SchemaGuidedReasoning(
         - No need to wait for payment confirmation before proceeding.
         - Always check customer data before issuing invoices or making changes.
         - List of available products: ${dbStub.products}
-        - Respond with ONLY valid JSON, no additional text.
-        - Your response must be a JSON object following this schema:
-         $promptResponseSchema        
     """.trimIndent()
 
     fun executeTasks(tasks: List<String>) {
@@ -53,8 +56,7 @@ class SchemaGuidedReasoning(
         for (i in 1..20) {
             val step = "step_$i"
             logger.info("Planning $step... ")
-
-            val nextStep = chatModel.call(Prompt(agentDialog))
+            val nextStep = chatModel.call(Prompt(agentDialog, openAiChatOptions))
                 .result.output.text
                 .let { objectMapper.readValue(it, NextStep::class.java) }
 

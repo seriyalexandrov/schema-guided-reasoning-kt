@@ -36,3 +36,9 @@ Run the test to see the agent in action:
 ```bash
 ./gradlew test --tests SchemaGuidedReasoningTest
 ```
+
+## Technical Details
+OpenAI API supports structure output with decoding constraints, which means a lower probability of the output being incorrect.
+[OpenAI Structured Output Python](https://platform.openai.com/docs/guides/structured-outputs/supported-schemas)
+[Spring Boot configuration] (https://spring.io/blog/2024/08/09/spring-ai-embraces-openais-structured-outputs-enhancing-json-response#using-the-beanoutputconverter)
+[Spring Blog article](https://spring.io/blog/2024/08/09/spring-ai-embraces-openais-structured-outputs-enhancing-json-response#using-the-beanoutputconverter)
