@@ -96,7 +96,7 @@ class SchemaGuidedReasoning(
                         AssistantMessage.ToolCall(
                             step,
                             "function",
-                            nextStep.function.tool,
+                            nextStep.function.toolName(),
                             it
                         )
                     )
@@ -116,7 +116,7 @@ class SchemaGuidedReasoning(
                     listOf(
                         ToolResponseMessage.ToolResponse(
                             step,
-                            nextStep.function.tool,
+                            nextStep.function.toolName(),
                             objectMapper.writeValueAsString(result)
                         )
                     )
